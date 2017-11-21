@@ -1,0 +1,244 @@
+#! /usr/bin/env bash
+
+# Distributed under the terms of the BSD 3-Clause license.
+
+# A tool for deleting old cached package files for the `pacman` package manager.
+
+PROGRAM="pacman-expire-cache"
+VERSION="0-next"
+SHORT_OPTIONS="hd:c:nv"
+LONG_OPTIONS="version,help,max-age:,\
+    retain-extra-installed:,retain-extra-notinstalled:,retain-extra:,
+    cache-dir:,dry-run,verbose"
+
+option_max_age=30
+option_retain_extra_installed=0
+option_retain_extra_notinstalled=0
+option_cache_dir="/var/cache/pacman/pkg"
+option_dry_run=n
+option_verbose=n
+
+
+err () {
+    code="$1"
+    shift
+    echo >&2 "$PROGRAM: error:" "$@"
+    exit "$code"
+}
+
+
+usage_err () {
+    if [ "$#" -gt 0 ]; then
+        echo >&2 "$PROGRAM: error:" "$@"
+    fi
+    echo >&2
+    echo >&2 "Call with \`--help' to display usage information."
+    exit 2
+}
+
+
+print_always () {
+    echo >&2 "$@"
+}
+
+
+print_verbose () {
+    if [ "$option_verbose" = y ]; then
+        echo >&2 "$@"
+    fi
+}
+
+
+print_version () {
+    echo "$PROGRAM $VERSION"
+}
+
+
+print_help () {
+    print_version
+    echo
+    echo "Expire old packages from the pacman package manager's cache directory."
+    echo
+    echo "Uses only the modification time of package files to determine what to delete,"
+    echo "not package version strings."
+    echo
+    echo "Usage: $PROGRAM [OPTION]..."
+    echo
+    echo "Options:"
+    echo "  --max-age=DAYS    delete files older than this (default: 30)"
+    echo "  --retain-extra-installed=NUMBER"
+    echo "                    retain this many recent files older than --max-age, for each"
+    echo "                    currently installed package (default: 0)"
+    echo "  --retain-extra-notinstalled=NUMBER"
+    echo "                    retain this many recent files older than --max-age, for each"
+    echo "                    package not currently installed (default: 0)"
+    echo "  --retain-extra=NUMBER"
+    echo "                    set both --retain-extra-installed and"
+    echo "                    --retain-extra-notinstalled to the same value"
+    echo "  --cache-dir=PATH  directory in which to find package files"
+    echo "                    (default: /var/cache/pacman/pkg)"
+    echo "  --dry-run         do not delete any files, but perform all checks and display"
+    echo "                    normal output"
+    echo "  --verbose         include informational output for each package file"
+    echo "  -h, --help        display this help and exit"
+    echo "  --version         display version information and exit"
+}
+
+
+validate_max_age () {
+    [[ "$option_max_age" =~ ^[0-9]{1,4}$ ]] || {
+        usage_err "--max-age: not a whole number between 0 and 9999:" \
+            "'$option_max_age'"
+    }
+}
+
+
+validate_retain_extra () {
+    [[ "$option_retain_extra_installed" =~ ^[0-9]{1,2}$ ]] || {
+        usage_err "--retain-extra-installed: not a whole number " \
+            "between 0 and 99: '$option_retain_extra_installed'"
+    }
+    [[ "$option_retain_extra_notinstalled" =~ ^[0-9]{1,2}$ ]] || {
+        usage_err "--retain-extra-notinstalled: not a whole number " \
+            "between 0 and 99: '$option_retain_extra_notinstalled'"
+    }
+}
+
+
+validate_cache_dir () {
+    [ -d "$option_cache_dir" ] || {
+        usage_err "--cache_dir: not a directory: '$option_cache_dir'"
+    }
+}
+
+
+read_options () {
+    while true; do
+        case "$1" in
+            '--version')
+                print_version
+                exit 0
+                ;;
+            '-h'|'--help')
+                print_help
+                exit 0
+                ;;
+            '-d'|'--max-age')
+                option_max_age="$2"
+                shift 2
+                ;;
+            '--retain-extra-installed')
+                option_retain_extra_installed="$2"
+                shift 2
+                ;;
+            '--retain-extra-notinstalled')
+                option_retain_extra_notinstalled="$2"
+                shift 2
+                ;;
+            '--retain-extra')
+                option_retain_extra_installed="$2"
+                option_retain_extra_notinstalled="$2"
+                shift 2
+                ;;
+            '-c'|'--cache-dir')
+                option_cache_dir="$2"
+                shift 2
+                ;;
+            '-n'|'--dry-run')
+                option_dry_run=y
+                shift
+                ;;
+            '-v'|'--verbose')
+                option_verbose=y
+                shift
+                ;;
+            '--')
+                shift
+                break
+                ;;
+        esac
+    done
+
+    if [ "$#" -gt 0 ]; then
+        usage_err "received extra arguments after known options: $@"
+    fi
+
+    validate_max_age
+    validate_retain_extra
+    validate_cache_dir
+}
+
+
+expire_cache () {
+    # convert option_max_age to unixtime
+    local now_unix="$(date +%s)"
+    local mtime_threshold="$((now_unix - option_max_age * 24 * 60 * 60))"
+
+    # TODO: error checking (skip + print_always files that fail)
+    ls "$option_cache_dir" | {
+        local file_name
+        while read -r file_name; do
+            local pkg_name="$(pacman -Qq --file "$option_cache_dir/$file_name")"
+            local mtime="$(stat --format %Y "$option_cache_dir/$file_name")"
+            echo "$pkg_name $mtime $file_name"
+        done
+
+    # sort: package name asc, mtime desc numerically
+    } | sort --key 1,1 --key 2,2nr | {
+
+        local file_line
+        local file_pkg_name
+        local file_mtime
+        local file_name
+        local pkg_name
+        local pkg_retain_extra
+        local pkg_files_retained
+        local action
+
+        while read -r file_line; do
+            file_pkg_name="$(echo "$file_line" | cut -d" " -f1)"
+            file_mtime="$(echo "$file_line" | cut -d" " -f2)"
+            file_name="$(echo "$file_line" | cut -d" " -f3-)"
+
+            if [ "$file_pkg_name" != "$pkg_name" ]; then
+                pkg_name="$file_pkg_name"
+                pkg_retain_extra="$option_retain_extra_notinstalled"
+                pacman -Q "$pkg_name" &> /dev/null && \
+                    pkg_retain_extra="$option_retain_extra_installed"
+                pkg_files_retained=0
+            fi
+
+            action=retain
+            if [ "$file_mtime" -lt "$mtime_threshold" ]; then
+                if [ "$pkg_files_retained" -eq "$pkg_retain_extra" ]; then
+                    action=delete
+                else
+                    ((pkg_files_retained+=1))
+                fi
+            fi
+
+            print_verbose "$action: $file_name"
+            if [ "$option_dry_run" = n ] && [ "$action" = delete ]; then
+                rm "$option_cache_dir/$file_name"
+            fi
+        done
+
+    }
+}
+
+
+getopt -T &> /dev/null
+if [ "$?" -ne 4 ]; then
+    err 1 "unsupported version of \`getopt'"
+fi
+options_script="$(getopt --name "$PROGRAM" --shell bash \
+    --options "$SHORT_OPTIONS" --longoptions "$LONG_OPTIONS" -- "$@")"
+getopt_code="$?"
+if [ "$getopt_code" -eq 1 ]; then
+    usage_err
+elif [ "$getopt_code" -ne 0 ]; then
+    exit 1
+fi
+eval set -- "$options_script"
+read_options "$@"
+expire_cache

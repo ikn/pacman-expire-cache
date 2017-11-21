@@ -1,0 +1,24 @@
+pacman-expire-cache 0-next.
+
+A tool for deleting old cached package files for the `pacman` package manager.
+
+http://ikn.org.uk/pacman-expire-cache
+
+    LICENSE
+
+Distributed under the terms of the BSD 3-Clause license.; if this was not
+included, you can find it here:
+    https://opensource.org/licenses/BSD-3-Clause
+
+    DEPENDENCIES
+
+Bash (>= 3.2): https://www.gnu.org/software/bash/
+getopt (Linux version): https://www.kernel.org/pub/linux/utils/util-linux/
+
+    INSTALLATION
+
+None currently.
+
+    USAGE
+
+Run `pacman-expire-cache --help` to print usage information.
