@@ -1,4 +1,4 @@
-pacman-expire-cache 0-next.
+pacman-expire-cache 0.1.
 
 A tool for deleting old cached package files for the `pacman` package manager.
 Existing cache cleaners generally offer the ability to retain the latest X
