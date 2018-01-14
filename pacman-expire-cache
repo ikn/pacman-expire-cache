@@ -4,6 +4,8 @@
 
 # A tool for deleting old cached package files for the `pacman` package manager.
 
+# TODO: tests
+
 PROGRAM="pacman-expire-cache"
 VERSION="0-next"
 SHORT_OPTIONS="hd:c:nv"
@@ -65,7 +67,8 @@ print_help () {
     echo "Usage: $PROGRAM [OPTION]..."
     echo
     echo "Options:"
-    echo "  --max-age=DAYS    delete files older than this (default: 30)"
+    echo "  -d DAYS, --max-age=DAYS"
+    echo "                    delete files older than this (default: 30)"
     echo "  --retain-extra-installed=NUMBER"
     echo "                    retain this many recent files older than --max-age, for each"
     echo "                    currently installed package (default: 0)"
@@ -75,11 +78,13 @@ print_help () {
     echo "  --retain-extra=NUMBER"
     echo "                    set both --retain-extra-installed and"
     echo "                    --retain-extra-notinstalled to the same value"
-    echo "  --cache-dir=PATH  directory in which to find package files"
+    echo "  -c PATH, --cache-dir=PATH"
+    echo "                    directory in which to find package files; this allows the"
+    echo "                    tool to be use for AUR helper caches"
     echo "                    (default: /var/cache/pacman/pkg)"
-    echo "  --dry-run         do not delete any files, but perform all checks and display"
+    echo "  -n, --dry-run     do not delete any files, but perform all checks and display"
     echo "                    normal output"
-    echo "  --verbose         include informational output for each package file"
+    echo "  -v, --verbose     include informational output for each package file"
     echo "  -h, --help        display this help and exit"
     echo "  --version         display version information and exit"
 }
