@@ -16,7 +16,8 @@ LONG_OPTIONS="version,help,max-age:,\
 option_max_age=30
 option_retain_extra_installed=0
 option_retain_extra_notinstalled=0
-option_cache_dir="/var/cache/pacman/pkg"
+default_cache_dir="/var/cache/pacman/pkg"
+option_cache_dirs=()
 option_dry_run=n
 option_verbose=n
 
@@ -64,7 +65,13 @@ print_help () {
     echo "Uses only the modification time of package files to determine what to delete,"
     echo "not package version strings."
     echo
-    echo "Usage: $PROGRAM [OPTION]..."
+    echo "Usage: $PROGRAM [OPTION]... [DIR]..."
+    echo
+    echo "DIR arguments are directories in which to find package files; if you want to"
+    echo "expire both the main cache and AUR helper caches, you should specify all"
+    echo "directories in a single invocation, where possible.  If no DIR arguments are"
+    echo "specified, only the main cache (/var/cache/pacman/pkg) is cleared.  Behaviour"
+    echo "is undefined in the case that the same directory is specified more than once."
     echo
     echo "Options:"
     echo "  -d DAYS, --max-age=DAYS"
@@ -79,9 +86,7 @@ print_help () {
     echo "                    set both --retain-extra-installed and"
     echo "                    --retain-extra-notinstalled to the same value"
     echo "  -c PATH, --cache-dir=PATH"
-    echo "                    directory in which to find package files; this allows the"
-    echo "                    tool to be use for AUR helper caches"
-    echo "                    (default: /var/cache/pacman/pkg)"
+    echo "                    deprecated option; provided for backwards compatibility"
     echo "  -n, --dry-run     do not delete any files, but perform all checks and display"
     echo "                    normal output"
     echo "  -v, --verbose     include informational output for each package file"
@@ -111,9 +116,12 @@ validate_retain_extra () {
 
 
 validate_cache_dir () {
-    [ -d "$option_cache_dir" ] || {
-        usage_err "--cache_dir: not a directory: '$option_cache_dir'"
-    }
+    local dir
+    for dir in "${option_cache_dirs[@]}"; do
+        [ -d "$dir" ] || {
+            usage_err "cache dir: not a directory: '$dir'"
+        }
+    done
 }
 
 
@@ -146,7 +154,7 @@ read_options () {
                 shift 2
                 ;;
             '-c'|'--cache-dir')
-                option_cache_dir="$2"
+                option_cache_dirs+=("$2")
                 shift 2
                 ;;
             '-n'|'--dry-run')
@@ -164,8 +172,12 @@ read_options () {
         esac
     done
 
-    if [ "$#" -gt 0 ]; then
-        usage_err "received extra arguments after known options: $@"
+    local dir
+    for dir in "$@"; do
+        option_cache_dirs+=("$dir")
+    done
+    if [ "${#option_cache_dirs[@]}" -eq 0 ]; then
+        option_cache_dirs+=("$default_cache_dir")
     fi
 
     validate_max_age
@@ -180,12 +192,17 @@ expire_cache () {
     local mtime_threshold="$((now_unix - option_max_age * 24 * 60 * 60))"
 
     # TODO: error checking (skip + print_always files that fail)
-    ls "$option_cache_dir" | {
-        local file_name
-        while read -r file_name; do
-            local pkg_name="$(pacman -Qq --file "$option_cache_dir/$file_name")"
-            local mtime="$(stat --format %Y "$option_cache_dir/$file_name")"
-            echo "$pkg_name $mtime $file_name"
+    {
+        local dir
+        for dir in "${option_cache_dirs[@]}"; do
+            ls "$dir" | {
+                local file_name
+                while read -r file_name; do
+                    local pkg_name="$(pacman -Qq --file "$dir/$file_name")"
+                    local mtime="$(stat --format %Y "$dir/$file_name")"
+                    echo "$pkg_name $mtime $dir/$file_name"
+                done
+            }
         done
 
     # sort: package name asc, mtime desc numerically
@@ -194,7 +211,7 @@ expire_cache () {
         local file_line
         local file_pkg_name
         local file_mtime
-        local file_name
+        local file_path
         local pkg_name
         local pkg_retain_extra
         local pkg_files_retained
@@ -203,7 +220,7 @@ expire_cache () {
         while read -r file_line; do
             file_pkg_name="$(echo "$file_line" | cut -d" " -f1)"
             file_mtime="$(echo "$file_line" | cut -d" " -f2)"
-            file_name="$(echo "$file_line" | cut -d" " -f3-)"
+            file_path="$(echo "$file_line" | cut -d" " -f3-)"
 
             if [ "$file_pkg_name" != "$pkg_name" ]; then
                 pkg_name="$file_pkg_name"
@@ -222,9 +239,9 @@ expire_cache () {
                 fi
             fi
 
-            print_verbose "$action: $file_name"
+            print_verbose "$action: $file_path"
             if [ "$option_dry_run" = n ] && [ "$action" = delete ]; then
-                rm "$option_cache_dir/$file_name"
+                rm "$file_path"
             fi
         done
 

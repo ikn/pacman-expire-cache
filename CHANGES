@@ -1,4 +1,5 @@
 0.1-next:
+ * can specify multiple cache dirs
 
 0.1:
  * initial version
