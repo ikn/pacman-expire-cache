@@ -33,8 +33,13 @@ getopt (Linux version): https://www.kernel.org/pub/linux/utils/util-linux/
 
     INSTALLATION
 
-None currently.
+Run `make install`.  The usual `DESTDIR`, etc. arguments to `make` are
+supported.
 
     USAGE
 
 Run `pacman-expire-cache --help` to print usage information.
+
+Error codes are as follows:
+    1: other error
+    2: incorrect usage
