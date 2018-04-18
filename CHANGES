@@ -1,5 +1,6 @@
 0.1-next:
  * can specify multiple cache dirs
+ * improved error handling
 
 0.1:
  * initial version

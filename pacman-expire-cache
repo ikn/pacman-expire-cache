@@ -12,6 +12,9 @@ SHORT_OPTIONS="hd:c:nv"
 LONG_OPTIONS="version,help,max-age:,\
     retain-extra-installed:,retain-extra-notinstalled:,retain-extra:,
     cache-dir:,dry-run,verbose"
+ERR_OTHER=1
+ERR_USAGE=2
+ERR_FILE=3
 
 option_max_age=30
 option_retain_extra_installed=0
@@ -36,12 +39,12 @@ usage_err () {
     fi
     echo >&2
     echo >&2 "Call with \`--help' to display usage information."
-    exit 2
+    exit "$ERR_USAGE"
 }
 
 
-print_always () {
-    echo >&2 "$@"
+print_error () {
+    echo >&2 "error:" "$@"
 }
 
 
@@ -92,6 +95,23 @@ print_help () {
     echo "  -v, --verbose     include informational output for each package file"
     echo "  -h, --help        display this help and exit"
     echo "  --version         display version information and exit"
+}
+
+
+# combine all the error codes given as arguments into a single error code
+combine_errors () {
+    local final_err=0
+    local err
+    for err in "$@"; do
+        if [ "$err" -eq 0 ] || [ "$final_err" -eq "$err" ]; then
+            true
+        elif [ "$final_err" -eq 0 ]; then
+            final_err="$err"
+        elif [ "$err" -ne 3 ]; then
+            final_err="$ERR_OTHER"
+        fi
+    done
+    return "$final_err"
 }
 
 
@@ -190,19 +210,37 @@ expire_cache () {
     # convert option_max_age to unixtime
     local now_unix="$(date +%s)"
     local mtime_threshold="$((now_unix - option_max_age * 24 * 60 * 60))"
+    local error_pkg_name="-"
 
-    # TODO: error checking (skip + print_always files that fail)
     {
         local dir
         for dir in "${option_cache_dirs[@]}"; do
-            ls "$dir" | {
+            {
+                ls "$dir" || exit "$ERR_OTHER"
+            } | {
                 local file_name
                 while read -r file_name; do
-                    local pkg_name="$(pacman -Qq --file "$dir/$file_name")"
-                    local mtime="$(stat --format %Y "$dir/$file_name")"
+
+                    local pkg_name
+                    pkg_name="$(pacman -Qq --file "$dir/$file_name")" || {
+                        print_error "failed for file:" "$dir/$file_name"
+                        echo "$error_pkg_name - $dir/$file_name"
+                        continue
+                    }
+
+                    local mtime
+                    mtime="$(stat --format %Y "$dir/$file_name")" || {
+                        print_error "failed for file:" "$dir/$file_name"
+                        echo "$error_pkg_name - $dir/$file_name"
+                        continue
+                    }
+
                     echo "$pkg_name $mtime $dir/$file_name"
+
                 done
             }
+
+            combine_errors "${PIPESTATUS[@]}"
         done
 
     # sort: package name asc, mtime desc numerically
@@ -215,6 +253,8 @@ expire_cache () {
         local pkg_name
         local pkg_retain_extra
         local pkg_files_retained
+        local pacman_err
+        local final_err=0
         local action
 
         while read -r file_line; do
@@ -222,11 +262,23 @@ expire_cache () {
             file_mtime="$(echo "$file_line" | cut -d" " -f2)"
             file_path="$(echo "$file_line" | cut -d" " -f3-)"
 
+            if [ "$file_pkg_name" = "$error_pkg_name" ]; then
+                final_err="$ERR_FILE"
+                continue
+            fi
+
             if [ "$file_pkg_name" != "$pkg_name" ]; then
                 pkg_name="$file_pkg_name"
                 pkg_retain_extra="$option_retain_extra_notinstalled"
-                pacman -Q "$pkg_name" &> /dev/null && \
+                pacman -Q "$pkg_name" &> /dev/null
+                pacman_err="$?"
+                if [ "$pacman_err" -eq 0 ]; then
                     pkg_retain_extra="$option_retain_extra_installed"
+                elif [ "$pacman_err" -ne 1 ]; then
+                    print_error "failed for file:" "$file_path"
+                    final_err="$ERR_FILE"
+                    continue
+                fi
                 pkg_files_retained=0
             fi
 
@@ -241,17 +293,24 @@ expire_cache () {
 
             print_verbose "$action: $file_path"
             if [ "$option_dry_run" = n ] && [ "$action" = delete ]; then
-                rm "$file_path"
+                rm "$file_path" || {
+                    print_error "failed for file:" "$file_path"
+                    final_err="$ERR_FILE"
+                }
             fi
         done
 
+        return "$final_err"
+
     }
+
+    combine_errors "${PIPESTATUS[@]}"
 }
 
 
 getopt -T &> /dev/null
 if [ "$?" -ne 4 ]; then
-    err 1 "unsupported version of \`getopt'"
+    err "$ERR_OTHER" "unsupported version of \`getopt'"
 fi
 options_script="$(getopt --name "$PROGRAM" --shell bash \
     --options "$SHORT_OPTIONS" --longoptions "$LONG_OPTIONS" -- "$@")"

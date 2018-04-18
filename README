@@ -43,3 +43,4 @@ Run `pacman-expire-cache --help` to print usage information.
 Error codes are as follows:
     1: other error
     2: incorrect usage
+    3: the program reached the end, but failed to process some package files
