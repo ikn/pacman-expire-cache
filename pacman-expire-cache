@@ -7,7 +7,7 @@
 # TODO: tests
 
 PROGRAM="pacman-expire-cache"
-VERSION="0.1-next"
+VERSION="0.2"
 SHORT_OPTIONS="hd:c:nv"
 LONG_OPTIONS="version,help,max-age:,\
     retain-extra-installed:,retain-extra-notinstalled:,retain-extra:,
