@@ -5,6 +5,25 @@
 # A tool for deleting old cached package files for the `pacman` package manager.
 
 # TODO: tests
+# TODO: call this a 'cautious' cache cleaner
+# TODO:
+# store packages which were installed at each run (names + versions)
+# - or write package list using pacman hooks
+#   - before + after any package install/remove/upgrade
+#   - if no lists exist, write one on clean
+#   - limit on total # list files
+# use this to ensure we only remove files for deleted packages which were REMOVED at most X days ago
+# in general: retain package files for which any of the following hold:
+# - modified < X days ago
+# - showed up in any current-list in: (lists < X days old, plus 1 older current-list)
+#
+# this behaviour removes any need for the --retain-extra* options
+# what does this mean for the first run?  won't do anything until been running it for max-age?
+# should be able to disable current-list behaviour?
+#
+# - option: max current-list age (default: 2*max-age)
+#     - should be the greatest ever expected max-age, plus the greatest ever expected time between runs
+# - option: current-list dir (default: /var/lib/pacman-expire-cache/installed-packages - or maybe the (first) cache dir)
 
 PROGRAM="pacman-expire-cache"
 VERSION="0.2-next"
