@@ -240,6 +240,8 @@ expire_cache () {
                 local file_name
                 while read -r file_name; do
 
+                    [[ $file_name == *.sig ]] && continue
+
                     local pkg_name
                     pkg_name="$(pacman -Qq --file "$dir/$file_name")" || {
                         print_error "failed for file:" "$dir/$file_name"

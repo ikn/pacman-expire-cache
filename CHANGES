@@ -1,4 +1,5 @@
 0.2-next:
+ * skip signature files in package dirs
 
 0.2:
  * can specify multiple cache dirs
