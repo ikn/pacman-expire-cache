@@ -1,4 +1,4 @@
-0.2-next:
+0.2.1:
  * skip signature files in package dirs
 
 0.2:

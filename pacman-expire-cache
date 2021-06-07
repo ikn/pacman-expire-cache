@@ -26,7 +26,7 @@
 # - option: current-list dir (default: /var/lib/pacman-expire-cache/installed-packages - or maybe the (first) cache dir)
 
 PROGRAM="pacman-expire-cache"
-VERSION="0.2-next"
+VERSION="0.2.1"
 SHORT_OPTIONS="hd:c:nv"
 LONG_OPTIONS="version,help,max-age:,\
     retain-extra-installed:,retain-extra-notinstalled:,retain-extra:,
